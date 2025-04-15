@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "1FZsXq6K61NvxpYKtfCImLOqytLRXDPuRIQ0q0f80nk=",
+  "Source": "WebApiContainer",
+  "BasePath": "_content/WebApiContainer",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
