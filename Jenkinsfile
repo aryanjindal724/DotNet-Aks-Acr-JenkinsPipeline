@@ -2,59 +2,81 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'webapicontainer'
-        ACR_NAME = 'acrregistryaryaninreact'
-        ACR_LOGIN_SERVER = "${ACR_NAME}.azurecr.io"
-        RESOURCE_GROUP = 'rg-docker-in-react'
+        AZURE_CREDENTIALS_ID = 'azure-service-principal' // Must be configured in Jenkins credentials
+        ACR_NAME = "acraryan01"
+        ACR_LOGIN_SERVER = "acraryan01.azurecr.io"
+        IMAGE_NAME = "mywebapiaryan"
+        TAG = "v1"
+        RESOURCE_GROUP = "my-rg"
+        AKS_CLUSTER_NAME = "aksaryan01"
     }
 
     stages {
+        stage('Checkout') {
+    steps {
+        git branch: 'main', url: 'https://github.com/aryanjindal724/DotNet-Aks-Acr-JenkinsPipeline.git'
+    }
+}
 
-        stage('Checkout Code') {
-            steps {
-                git 'https://github.com/aryanjindal455/WebApiContainer.git'
-            }
-        }
 
-        stage('Build .NET Project') {
+        stage('Azure Login') {
             steps {
-                sh 'dotnet restore'
-                sh 'dotnet build --configuration Release'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                sh "docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:latest ."
-            }
-        }
-
-        stage('Login to ACR') {
-            steps {
-                sh "az acr login --name $ACR_NAME"
-            }
-        }
-
-        stage('Push Docker Image to ACR') {
-            steps {
-                sh "docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:latest"
+                withCredentials([azureServicePrincipal(
+                    credentialsId: "${AZURE_CREDENTIALS_ID}",
+                    subscriptionIdVariable: 'AZ_SUBSCRIPTION_ID',
+                    clientIdVariable: 'AZ_CLIENT_ID',
+                    clientSecretVariable: 'AZ_CLIENT_SECRET',
+                    tenantIdVariable: 'AZ_TENANT_ID'
+                )]) {
+                    bat '''
+                        az login --service-principal -u %AZ_CLIENT_ID% -p %AZ_CLIENT_SECRET% --tenant %AZ_TENANT_ID%
+                        az account set --subscription %AZ_SUBSCRIPTION_ID%
+                    '''
+                }
             }
         }
 
         stage('Terraform Init & Apply') {
             steps {
-                dir('terraform') {
-                    sh 'terraform init'
-                    sh 'terraform validate'
-                    sh 'terraform apply -auto-approve'
+                dir('Terraform') {
+                    bat 'terraform init'
+                    bat 'terraform apply -auto-approve'
                 }
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                bat """
+                    az acr login --name %ACR_NAME%
+                    docker build -t %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%TAG% .
+                    docker push %ACR_LOGIN_SERVER%/%IMAGE_NAME%:%TAG%
+                """
+            }
+        }
+
+        stage('AKS Authentication') {
+            steps {
+                bat """
+                    az aks get-credentials --resource-group %RESOURCE_GROUP% --name %AKS_CLUSTER_NAME% --overwrite-existing
+                """
+            }
+        }
+
+        stage('Deploy to AKS') {
+            steps {
+                bat 'kubectl apply -f deployment.yaml'
+                
             }
         }
     }
 
     post {
-        always {
-            echo 'Pipeline completed.'
+        failure {
+            echo "❌ Build failed."
+        }
+        success {
+            echo "✅ Application deployed successfully to AKS!"
         }
     }
 }
